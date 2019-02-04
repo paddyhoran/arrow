@@ -29,10 +29,26 @@ use std::slice::from_raw_parts_mut;
 use num::Zero;
 
 use crate::array::*;
-use crate::buffer::MutableBuffer;
+use crate::array_data::ArrayDataBuilder;
+use crate::bitmap::Bitmap;
+use crate::buffer::{Buffer, MutableBuffer};
 use crate::compute::array_ops::math_op;
 use crate::datatypes;
 use crate::error::{ArrowError, Result};
+
+/// Creates a new `Option<Bitmap>` for use in binary kernels
+fn update_bin_kernel_bitmap(left: &Option<Bitmap>, right: &Option<Bitmap>) -> Option<Buffer> {
+    match &left {
+        &None => match &right {
+            &None => None,
+            &Some(r) => Some(r.bits.clone()),
+        },
+        &Some(l) => match &right {
+            &None => Some(l.bits.clone()),
+            &Some(r) => Some(l.bits.clone() & r.bits.clone()),
+        },
+    }
+}
 
 /// Vectorized version of add operation
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -55,6 +71,11 @@ where
         ));
     }
 
+    let data_builder = ArrayDataBuilder::new(T::get_data_type());
+
+    let new_bit_buffer =
+        update_bin_kernel_bitmap(&left.data().null_bitmap(), &right.data().null_bitmap());
+
     let lanes = T::lanes();
     let buffer_size = left.len() * mem::size_of::<T::Native>();
     let mut result = MutableBuffer::new(buffer_size).with_bitset(buffer_size, false);
@@ -73,7 +94,16 @@ where
         T::write(simd_result, result_slice);
     }
 
-    Ok(PrimitiveArray::<T>::new(left.len(), result.freeze(), 0, 0))
+    let data = match new_bit_buffer {
+        None => data_builder.add_buffer(result.freeze()).build(),
+        Some(bit_buffer) => {
+            let non_null_slots = 3;
+            data_builder.add_buffer(result.freeze()).null_count(non_null_slots).null_bit_buffer(bit_buffer).build()
+        }
+//        Some(bit_buffer) => data_builder.add_buffer(result.freeze()).build()
+    };
+
+    Ok(PrimitiveArray::<T>::from(data))
 }
 
 /// Perform `left + right` operation on two arrays. If either left or right value is null
@@ -139,7 +169,6 @@ mod tests {
         );
     }
 
-    #[ignore]
     #[test]
     fn test_primitive_array_add_with_nulls() {
         let a = Int32Array::from(vec![Some(5), None, Some(7), None]);
