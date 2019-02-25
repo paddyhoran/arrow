@@ -20,6 +20,7 @@
 use crate::bitmap::Bitmap;
 use crate::buffer::Buffer;
 use crate::error::Result;
+//use crate::datatypes::ArrowNumericType;
 
 /// Applies a given binary operation, `op`, to two references to `Option<Bitmap>`'s.
 ///
@@ -43,6 +44,20 @@ where
         },
     }
 }
+//use packed_simd::*;
+//
+//#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+//pub unsafe fn binary_comp_op_simd<T, F>(left: &[u8], right: &[u8], result: &mut [u8], op: F)
+//    where
+//        T: ArrowNumericType,
+//        F: Fn(T::Simd, T::Simd) -> u8x64,
+//{
+//    let left_simd = T::load(left);
+//    let right_simd = T::load(right);
+//    let simd_result = op(left_simd, right_simd);
+//    simd_result.write_to_slice_unaligned_unchecked(result);
+//}
+
 
 #[cfg(test)]
 mod tests {

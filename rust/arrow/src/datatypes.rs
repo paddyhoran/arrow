@@ -21,6 +21,7 @@
 //! information regarding data-types and memory layouts see
 //! [here](https://arrow.apache.org/docs/memory_layout.html).
 
+use std::cmp::{PartialEq};
 use std::fmt;
 use std::mem::size_of;
 use std::ops::{Add, Div, Mul, Sub};
@@ -170,6 +171,9 @@ where
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     type Simd;
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    type SimdMask;
+
     /// The number of SIMD lanes available
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn lanes() -> usize;
@@ -177,6 +181,16 @@ where
     /// Loads a slice into a SIMD register
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn load(slice: &[Self::Native]) -> Self::Simd;
+
+    /// Loads a slice into a SIMD register
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn new_mask() -> Self::SimdMask;
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn mask_set(mask: Self::SimdMask, idx: usize, value: bool) -> Self::SimdMask;
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn mask_extract(mask: &Self::SimdMask, idx: usize) -> bool;
 
     /// Performs a SIMD binary operation
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -186,16 +200,40 @@ where
         op: F,
     ) -> Self::Simd;
 
+    /// Performs a SIMD binary operation
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn bin_comp_op<F: Fn(Self::Simd, Self::Simd) -> Self::SimdMask>(
+        left: Self::Simd,
+        right: Self::Simd,
+        op: F,
+    ) -> Self::SimdMask;
+
+    /// Performs a SIMD binary operation
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn eq(left: Self::Simd, right: Self::Simd, ) -> Self::SimdMask;
+
+    /// Performs a SIMD binary operation
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn bin_op_with_mask<F: Fn(Self::Simd, Self::Simd) -> Self::Simd>(
+        left: Self::Simd,
+        right: Self::Simd,
+        op: F,
+        mask: Self::SimdMask,
+    ) -> Self::Simd;
+
     /// Writes a SIMD result back to a slice
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn write(simd_result: Self::Simd, slice: &mut [Self::Native]);
 }
 
 macro_rules! make_numeric_type {
-    ($impl_ty:ty, $native_ty:ty, $simd_ty:ident) => {
+    ($impl_ty:ty, $native_ty:ty, $simd_ty:ident, $simd_mask_ty:ident) => {
         impl ArrowNumericType for $impl_ty {
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             type Simd = $simd_ty;
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            type SimdMask = $simd_mask_ty;
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             fn lanes() -> usize {
@@ -208,12 +246,49 @@ macro_rules! make_numeric_type {
             }
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            fn new_mask() -> $simd_mask_ty {
+                $simd_mask_ty::splat(false)
+            }
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            fn mask_set(mask: $simd_mask_ty, idx: usize, value: bool) -> $simd_mask_ty {
+                unsafe { mask.replace_unchecked(idx, value)}}
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            fn mask_extract(mask: &Self::SimdMask, idx: usize) -> bool {
+                unsafe { mask.extract_unchecked(idx)}}
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             fn bin_op<F: Fn($simd_ty, $simd_ty) -> $simd_ty>(
                 left: $simd_ty,
                 right: $simd_ty,
                 op: F,
             ) -> $simd_ty {
                 op(left, right)
+            }
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            fn bin_comp_op<F: Fn($simd_ty, $simd_ty) -> $simd_mask_ty>(
+                left: $simd_ty,
+                right: $simd_ty,
+                op: F,
+            ) -> $simd_mask_ty {
+                op(left, right)
+            }
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            fn eq(left: $simd_ty, right: $simd_ty, ) -> $simd_mask_ty {
+                left.eq(right)
+            }
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            fn bin_op_with_mask<F: Fn($simd_ty, $simd_ty) -> $simd_ty>(
+                left: $simd_ty,
+                right: $simd_ty,
+                op: F,
+                mask: $simd_mask_ty,
+            ) -> $simd_ty {
+                mask.select(op(left, right), left)
             }
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -224,16 +299,16 @@ macro_rules! make_numeric_type {
     };
 }
 
-make_numeric_type!(Int8Type, i8, i8x64);
-make_numeric_type!(Int16Type, i16, i16x32);
-make_numeric_type!(Int32Type, i32, i32x16);
-make_numeric_type!(Int64Type, i64, i64x8);
-make_numeric_type!(UInt8Type, u8, u8x64);
-make_numeric_type!(UInt16Type, u16, u16x32);
-make_numeric_type!(UInt32Type, u32, u32x16);
-make_numeric_type!(UInt64Type, u64, u64x8);
-make_numeric_type!(Float32Type, f32, f32x16);
-make_numeric_type!(Float64Type, f64, f64x8);
+make_numeric_type!(Int8Type, i8, i8x64, m8x64);
+make_numeric_type!(Int16Type, i16, i16x32, m16x32);
+make_numeric_type!(Int32Type, i32, i32x16, m32x16);
+make_numeric_type!(Int64Type, i64, i64x8, m64x8);
+make_numeric_type!(UInt8Type, u8, u8x64, m8x64);
+make_numeric_type!(UInt16Type, u16, u16x32, m16x32);
+make_numeric_type!(UInt32Type, u32, u32x16, m32x16);
+make_numeric_type!(UInt64Type, u64, u64x8, m64x8);
+make_numeric_type!(Float32Type, f32, f32x16, m32x16);
+make_numeric_type!(Float64Type, f64, f64x8, m64x8);
 
 /// Allows conversion from supported Arrow types to a byte slice.
 pub trait ToByteSlice {
