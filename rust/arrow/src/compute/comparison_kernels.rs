@@ -32,9 +32,41 @@ use crate::datatypes::{DataType, BooleanType, ArrowNumericType};
 use crate::error::{ArrowError, Result};
 use crate::builder::*;
 
-/// SIMD vectorized version of `math_op` above.
+/// Helper function to perform boolean lambda function on values from two arrays.
+fn compare_op<T, F>(
+    left: &PrimitiveArray<T>,
+    right: &PrimitiveArray<T>,
+    op: F,
+) -> Result<BooleanArray>
+    where
+        T: ArrowNumericType,
+        F: Fn(Option<T::Native>, Option<T::Native>) -> bool,
+{
+    if left.len() != right.len() {
+        return Err(ArrowError::ComputeError(
+            "Cannot perform math operation on arrays of different length".to_string(),
+        ));
+    }
+    let mut b = BooleanArray::builder(left.len());
+    for i in 0..left.len() {
+        let index = i;
+        let l = if left.is_null(i) {
+            None
+        } else {
+            Some(left.value(index))
+        };
+        let r = if right.is_null(i) {
+            None
+        } else {
+            Some(right.value(index))
+        };
+        b.append_value(op(l, r))?;
+    }
+    Ok(b.finish())
+}
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-fn simd_comp_op<T, F>(
+fn simd_compare_op<T, F>(
     left: &PrimitiveArray<T>,
     right: &PrimitiveArray<T>,
     op: F,
@@ -84,7 +116,81 @@ pub fn eq<T>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>) -> Result<Bool
     where
         T: ArrowNumericType,
 {
-    simd_comp_op(left, right, |a, b| T::eq(a, b))
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    return simd_compare_op(left, right, |a, b| T::eq(a, b));
+
+    #[allow(unreachable_code)]
+    compare_op(left, right, |a, b| a == b)
+}
+
+/// Perform `left != right` operation on two arrays.
+pub fn neq<T>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>) -> Result<BooleanArray>
+    where
+        T: ArrowNumericType,
+{
+    compare_op(left, right, |a, b| a != b)
+}
+
+/// Perform `left < right` operation on two arrays. Null values are less than non-null
+/// values.
+pub fn lt<T>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>) -> Result<BooleanArray>
+    where
+        T: ArrowNumericType,
+{
+    compare_op(left, right, |a, b| match (a, b) {
+        (None, None) => false,
+        (None, _) => true,
+        (_, None) => false,
+        (Some(aa), Some(bb)) => aa < bb,
+    })
+}
+
+/// Perform `left <= right` operation on two arrays. Null values are less than non-null
+/// values.
+pub fn lt_eq<T>(
+    left: &PrimitiveArray<T>,
+    right: &PrimitiveArray<T>,
+) -> Result<BooleanArray>
+    where
+        T: ArrowNumericType,
+{
+    compare_op(left, right, |a, b| match (a, b) {
+        (None, None) => true,
+        (None, _) => true,
+        (_, None) => false,
+        (Some(aa), Some(bb)) => aa <= bb,
+    })
+}
+
+/// Perform `left > right` operation on two arrays. Non-null values are greater than null
+/// values.
+pub fn gt<T>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>) -> Result<BooleanArray>
+    where
+        T: ArrowNumericType,
+{
+    compare_op(left, right, |a, b| match (a, b) {
+        (None, None) => false,
+        (None, _) => false,
+        (_, None) => true,
+        (Some(aa), Some(bb)) => aa > bb,
+    })
+}
+
+/// Perform `left >= right` operation on two arrays. Non-null values are greater than null
+/// values.
+pub fn gt_eq<T>(
+    left: &PrimitiveArray<T>,
+    right: &PrimitiveArray<T>,
+) -> Result<BooleanArray>
+    where
+        T: ArrowNumericType,
+{
+    compare_op(left, right, |a, b| match (a, b) {
+        (None, None) => true,
+        (None, _) => false,
+        (_, None) => true,
+        (Some(aa), Some(bb)) => aa >= bb,
+    })
 }
 
 
@@ -105,104 +211,104 @@ mod tests {
         assert_eq!(false, c.value(4));
     }
 
-//    #[test]
-//    fn test_primitive_array_neq() {
-//        let a = Int32Array::from(vec![8, 8, 8, 8, 8]);
-//        let b = Int32Array::from(vec![6, 7, 8, 9, 10]);
-//        let c = neq(&a, &b).unwrap();
-//        assert_eq!(true, c.value(0));
-//        assert_eq!(true, c.value(1));
-//        assert_eq!(false, c.value(2));
-//        assert_eq!(true, c.value(3));
-//        assert_eq!(true, c.value(4));
-//    }
-//
-//    #[test]
-//    fn test_primitive_array_lt() {
-//        let a = Int32Array::from(vec![8, 8, 8, 8, 8]);
-//        let b = Int32Array::from(vec![6, 7, 8, 9, 10]);
-//        let c = lt(&a, &b).unwrap();
-//        assert_eq!(false, c.value(0));
-//        assert_eq!(false, c.value(1));
-//        assert_eq!(false, c.value(2));
-//        assert_eq!(true, c.value(3));
-//        assert_eq!(true, c.value(4));
-//    }
-//
-//    #[test]
-//    fn test_primitive_array_lt_nulls() {
-//        let a = Int32Array::from(vec![None, None, Some(1)]);
-//        let b = Int32Array::from(vec![None, Some(1), None]);
-//        let c = lt(&a, &b).unwrap();
-//        assert_eq!(false, c.value(0));
-//        assert_eq!(true, c.value(1));
-//        assert_eq!(false, c.value(2));
-//    }
-//
-//    #[test]
-//    fn test_primitive_array_lt_eq() {
-//        let a = Int32Array::from(vec![8, 8, 8, 8, 8]);
-//        let b = Int32Array::from(vec![6, 7, 8, 9, 10]);
-//        let c = lt_eq(&a, &b).unwrap();
-//        assert_eq!(false, c.value(0));
-//        assert_eq!(false, c.value(1));
-//        assert_eq!(true, c.value(2));
-//        assert_eq!(true, c.value(3));
-//        assert_eq!(true, c.value(4));
-//    }
-//
-//    #[test]
-//    fn test_primitive_array_lt_eq_nulls() {
-//        let a = Int32Array::from(vec![None, None, Some(1)]);
-//        let b = Int32Array::from(vec![None, Some(1), None]);
-//        let c = lt_eq(&a, &b).unwrap();
-//        assert_eq!(true, c.value(0));
-//        assert_eq!(true, c.value(1));
-//        assert_eq!(false, c.value(2));
-//    }
-//
-//    #[test]
-//    fn test_primitive_array_gt() {
-//        let a = Int32Array::from(vec![8, 8, 8, 8, 8]);
-//        let b = Int32Array::from(vec![6, 7, 8, 9, 10]);
-//        let c = gt(&a, &b).unwrap();
-//        assert_eq!(true, c.value(0));
-//        assert_eq!(true, c.value(1));
-//        assert_eq!(false, c.value(2));
-//        assert_eq!(false, c.value(3));
-//        assert_eq!(false, c.value(4));
-//    }
-//
-//    #[test]
-//    fn test_primitive_array_gt_nulls() {
-//        let a = Int32Array::from(vec![None, None, Some(1)]);
-//        let b = Int32Array::from(vec![None, Some(1), None]);
-//        let c = gt(&a, &b).unwrap();
-//        assert_eq!(false, c.value(0));
-//        assert_eq!(false, c.value(1));
-//        assert_eq!(true, c.value(2));
-//    }
-//
-//    #[test]
-//    fn test_primitive_array_gt_eq() {
-//        let a = Int32Array::from(vec![8, 8, 8, 8, 8]);
-//        let b = Int32Array::from(vec![6, 7, 8, 9, 10]);
-//        let c = gt_eq(&a, &b).unwrap();
-//        assert_eq!(true, c.value(0));
-//        assert_eq!(true, c.value(1));
-//        assert_eq!(true, c.value(2));
-//        assert_eq!(false, c.value(3));
-//        assert_eq!(false, c.value(4));
-//    }
-//
-//    #[test]
-//    fn test_primitive_array_gt_eq_nulls() {
-//        let a = Int32Array::from(vec![None, None, Some(1)]);
-//        let b = Int32Array::from(vec![None, Some(1), None]);
-//        let c = gt_eq(&a, &b).unwrap();
-//        assert_eq!(true, c.value(0));
-//        assert_eq!(false, c.value(1));
-//        assert_eq!(true, c.value(2));
-//    }
+    #[test]
+    fn test_primitive_array_neq() {
+        let a = Int32Array::from(vec![8, 8, 8, 8, 8]);
+        let b = Int32Array::from(vec![6, 7, 8, 9, 10]);
+        let c = neq(&a, &b).unwrap();
+        assert_eq!(true, c.value(0));
+        assert_eq!(true, c.value(1));
+        assert_eq!(false, c.value(2));
+        assert_eq!(true, c.value(3));
+        assert_eq!(true, c.value(4));
+    }
+
+    #[test]
+    fn test_primitive_array_lt() {
+        let a = Int32Array::from(vec![8, 8, 8, 8, 8]);
+        let b = Int32Array::from(vec![6, 7, 8, 9, 10]);
+        let c = lt(&a, &b).unwrap();
+        assert_eq!(false, c.value(0));
+        assert_eq!(false, c.value(1));
+        assert_eq!(false, c.value(2));
+        assert_eq!(true, c.value(3));
+        assert_eq!(true, c.value(4));
+    }
+
+    #[test]
+    fn test_primitive_array_lt_nulls() {
+        let a = Int32Array::from(vec![None, None, Some(1)]);
+        let b = Int32Array::from(vec![None, Some(1), None]);
+        let c = lt(&a, &b).unwrap();
+        assert_eq!(false, c.value(0));
+        assert_eq!(true, c.value(1));
+        assert_eq!(false, c.value(2));
+    }
+
+    #[test]
+    fn test_primitive_array_lt_eq() {
+        let a = Int32Array::from(vec![8, 8, 8, 8, 8]);
+        let b = Int32Array::from(vec![6, 7, 8, 9, 10]);
+        let c = lt_eq(&a, &b).unwrap();
+        assert_eq!(false, c.value(0));
+        assert_eq!(false, c.value(1));
+        assert_eq!(true, c.value(2));
+        assert_eq!(true, c.value(3));
+        assert_eq!(true, c.value(4));
+    }
+
+    #[test]
+    fn test_primitive_array_lt_eq_nulls() {
+        let a = Int32Array::from(vec![None, None, Some(1)]);
+        let b = Int32Array::from(vec![None, Some(1), None]);
+        let c = lt_eq(&a, &b).unwrap();
+        assert_eq!(true, c.value(0));
+        assert_eq!(true, c.value(1));
+        assert_eq!(false, c.value(2));
+    }
+
+    #[test]
+    fn test_primitive_array_gt() {
+        let a = Int32Array::from(vec![8, 8, 8, 8, 8]);
+        let b = Int32Array::from(vec![6, 7, 8, 9, 10]);
+        let c = gt(&a, &b).unwrap();
+        assert_eq!(true, c.value(0));
+        assert_eq!(true, c.value(1));
+        assert_eq!(false, c.value(2));
+        assert_eq!(false, c.value(3));
+        assert_eq!(false, c.value(4));
+    }
+
+    #[test]
+    fn test_primitive_array_gt_nulls() {
+        let a = Int32Array::from(vec![None, None, Some(1)]);
+        let b = Int32Array::from(vec![None, Some(1), None]);
+        let c = gt(&a, &b).unwrap();
+        assert_eq!(false, c.value(0));
+        assert_eq!(false, c.value(1));
+        assert_eq!(true, c.value(2));
+    }
+
+    #[test]
+    fn test_primitive_array_gt_eq() {
+        let a = Int32Array::from(vec![8, 8, 8, 8, 8]);
+        let b = Int32Array::from(vec![6, 7, 8, 9, 10]);
+        let c = gt_eq(&a, &b).unwrap();
+        assert_eq!(true, c.value(0));
+        assert_eq!(true, c.value(1));
+        assert_eq!(true, c.value(2));
+        assert_eq!(false, c.value(3));
+        assert_eq!(false, c.value(4));
+    }
+
+    #[test]
+    fn test_primitive_array_gt_eq_nulls() {
+        let a = Int32Array::from(vec![None, None, Some(1)]);
+        let b = Int32Array::from(vec![None, Some(1), None]);
+        let c = gt_eq(&a, &b).unwrap();
+        assert_eq!(true, c.value(0));
+        assert_eq!(false, c.value(1));
+        assert_eq!(true, c.value(2));
+    }
 
 }
