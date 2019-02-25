@@ -19,9 +19,8 @@
 
 use std::ops::Add;
 
-use crate::array::{Array, BooleanArray, PrimitiveArray};
+use crate::array::{Array, PrimitiveArray};
 use crate::datatypes::ArrowNumericType;
-use crate::error::{ArrowError, Result};
 
 /// Returns the minimum value in the array, according to the natural order.
 pub fn min<T>(array: &PrimitiveArray<T>) -> Option<T::Native>

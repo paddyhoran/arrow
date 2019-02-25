@@ -22,7 +22,6 @@
 //! `RUSTFLAGS="-C target-feature=+avx2"` for example.  See the documentation
 //! [here] (https://doc.rust-lang.org/stable/std/arch/) for more information.
 
-use std::ops::{Add, Div, Mul, Sub};
 use std::sync::Arc;
 
 use crate::array::*;

@@ -21,7 +21,6 @@
 //! information regarding data-types and memory layouts see
 //! [here](https://arrow.apache.org/docs/memory_layout.html).
 
-use std::cmp::{PartialEq};
 use std::fmt;
 use std::mem::size_of;
 use std::ops::{Add, Div, Mul, Sub};
@@ -200,26 +199,26 @@ where
         op: F,
     ) -> Self::Simd;
 
-    /// Performs a SIMD binary operation
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fn bin_comp_op<F: Fn(Self::Simd, Self::Simd) -> Self::SimdMask>(
-        left: Self::Simd,
-        right: Self::Simd,
-        op: F,
-    ) -> Self::SimdMask;
+//    /// Performs a SIMD binary operation
+//    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+//    fn bin_comp_op<F: Fn(Self::Simd, Self::Simd) -> Self::SimdMask>(
+//        left: Self::Simd,
+//        right: Self::Simd,
+//        op: F,
+//    ) -> Self::SimdMask;
 
     /// Performs a SIMD binary operation
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn eq(left: Self::Simd, right: Self::Simd, ) -> Self::SimdMask;
 
     /// Performs a SIMD binary operation
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fn bin_op_with_mask<F: Fn(Self::Simd, Self::Simd) -> Self::Simd>(
-        left: Self::Simd,
-        right: Self::Simd,
-        op: F,
-        mask: Self::SimdMask,
-    ) -> Self::Simd;
+//    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+//    fn bin_op_with_mask<F: Fn(Self::Simd, Self::Simd) -> Self::Simd>(
+//        left: Self::Simd,
+//        right: Self::Simd,
+//        op: F,
+//        mask: Self::SimdMask,
+//    ) -> Self::Simd;
 
     /// Writes a SIMD result back to a slice
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -267,29 +266,29 @@ macro_rules! make_numeric_type {
                 op(left, right)
             }
 
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            fn bin_comp_op<F: Fn($simd_ty, $simd_ty) -> $simd_mask_ty>(
-                left: $simd_ty,
-                right: $simd_ty,
-                op: F,
-            ) -> $simd_mask_ty {
-                op(left, right)
-            }
+//            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+//            fn bin_comp_op<F: Fn($simd_ty, $simd_ty) -> $simd_mask_ty>(
+//                left: $simd_ty,
+//                right: $simd_ty,
+//                op: F,
+//            ) -> $simd_mask_ty {
+//                op(left, right)
+//            }
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             fn eq(left: $simd_ty, right: $simd_ty, ) -> $simd_mask_ty {
                 left.eq(right)
             }
 
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            fn bin_op_with_mask<F: Fn($simd_ty, $simd_ty) -> $simd_ty>(
-                left: $simd_ty,
-                right: $simd_ty,
-                op: F,
-                mask: $simd_mask_ty,
-            ) -> $simd_ty {
-                mask.select(op(left, right), left)
-            }
+//            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+//            fn bin_op_with_mask<F: Fn($simd_ty, $simd_ty) -> $simd_ty>(
+//                left: $simd_ty,
+//                right: $simd_ty,
+//                op: F,
+//                mask: $simd_mask_ty,
+//            ) -> $simd_ty {
+//                mask.select(op(left, right), left)
+//            }
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             fn write(simd_result: $simd_ty, slice: &mut [$native_ty]) {
