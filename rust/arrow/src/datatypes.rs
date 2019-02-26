@@ -207,9 +207,23 @@ where
 //        op: F,
 //    ) -> Self::SimdMask;
 
-    /// Performs a SIMD binary operation
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn eq(left: Self::Simd, right: Self::Simd, ) -> Self::SimdMask;
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn ne(left: Self::Simd, right: Self::Simd, ) -> Self::SimdMask;
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn lt(left: Self::Simd, right: Self::Simd, ) -> Self::SimdMask;
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn le(left: Self::Simd, right: Self::Simd, ) -> Self::SimdMask;
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn gt(left: Self::Simd, right: Self::Simd, ) -> Self::SimdMask;
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn ge(left: Self::Simd, right: Self::Simd, ) -> Self::SimdMask;
 
     /// Performs a SIMD binary operation
 //    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -278,6 +292,31 @@ macro_rules! make_numeric_type {
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             fn eq(left: $simd_ty, right: $simd_ty, ) -> $simd_mask_ty {
                 left.eq(right)
+            }
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            fn ne(left: $simd_ty, right: $simd_ty, ) -> $simd_mask_ty {
+                left.ne(right)
+            }
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            fn lt(left: $simd_ty, right: $simd_ty, ) -> $simd_mask_ty {
+                left.lt(right)
+            }
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            fn le(left: $simd_ty, right: $simd_ty, ) -> $simd_mask_ty {
+                left.le(right)
+            }
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            fn gt(left: $simd_ty, right: $simd_ty, ) -> $simd_mask_ty {
+                left.gt(right)
+            }
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            fn ge(left: $simd_ty, right: $simd_ty, ) -> $simd_mask_ty {
+                left.ge(right)
             }
 
 //            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

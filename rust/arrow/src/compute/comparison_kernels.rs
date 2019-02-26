@@ -32,7 +32,7 @@ use crate::error::{ArrowError, Result};
 use crate::builder::*;
 
 /// Helper function to perform boolean lambda function on values from two arrays.
-fn compare_op<T, F>(
+pub fn compare_op<T, F>(
     left: &PrimitiveArray<T>,
     right: &PrimitiveArray<T>,
     op: F,
@@ -127,6 +127,10 @@ pub fn neq<T>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>) -> Result<Boo
     where
         T: ArrowNumericType,
 {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    return simd_compare_op(left, right, |a, b| T::ne(a, b));
+
+    #[allow(unreachable_code)]
     compare_op(left, right, |a, b| a != b)
 }
 
@@ -136,6 +140,10 @@ pub fn lt<T>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>) -> Result<Bool
     where
         T: ArrowNumericType,
 {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    return simd_compare_op(left, right, |a, b| T::lt(a, b));
+
+    #[allow(unreachable_code)]
     compare_op(left, right, |a, b| match (a, b) {
         (None, None) => false,
         (None, _) => true,
@@ -153,6 +161,10 @@ pub fn lt_eq<T>(
     where
         T: ArrowNumericType,
 {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    return simd_compare_op(left, right, |a, b| T::le(a, b));
+
+    #[allow(unreachable_code)]
     compare_op(left, right, |a, b| match (a, b) {
         (None, None) => true,
         (None, _) => true,
@@ -167,6 +179,10 @@ pub fn gt<T>(left: &PrimitiveArray<T>, right: &PrimitiveArray<T>) -> Result<Bool
     where
         T: ArrowNumericType,
 {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    return simd_compare_op(left, right, |a, b| T::gt(a, b));
+
+    #[allow(unreachable_code)]
     compare_op(left, right, |a, b| match (a, b) {
         (None, None) => false,
         (None, _) => false,
@@ -184,6 +200,10 @@ pub fn gt_eq<T>(
     where
         T: ArrowNumericType,
 {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    return simd_compare_op(left, right, |a, b| T::ge(a, b));
+
+    #[allow(unreachable_code)]
     compare_op(left, right, |a, b| match (a, b) {
         (None, None) => true,
         (None, _) => false,
