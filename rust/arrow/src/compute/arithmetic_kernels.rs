@@ -27,13 +27,13 @@ use std::ops::{Add, Div, Mul, Sub};
 use std::slice::from_raw_parts_mut;
 use std::sync::Arc;
 
-use num::Zero;
+use num::{One, Zero};
 
 use crate::array::*;
 use crate::array_data::ArrayData;
 use crate::buffer::MutableBuffer;
 use crate::builder::PrimitiveBuilder;
-use crate::compute::util::apply_bin_op_to_option_bitmap;
+use crate::compute::util::{apply_bin_op_to_option_bitmap, is_valid};
 use crate::datatypes;
 use crate::error::{ArrowError, Result};
 
@@ -101,6 +101,68 @@ where
         let simd_left = T::load(left.value_slice(i, lanes));
         let simd_right = T::load(right.value_slice(i, lanes));
         let simd_result = T::bin_op(simd_left, simd_right, &op);
+
+        let result_slice: &mut [T::Native] = unsafe {
+            from_raw_parts_mut(
+                (result.data_mut().as_mut_ptr() as *mut T::Native).offset(i as isize),
+                lanes,
+            )
+        };
+        T::write(simd_result, result_slice);
+    }
+
+    let data = ArrayData::new(
+        T::get_data_type(),
+        left.len(),
+        None,
+        null_bit_buffer,
+        left.offset(),
+        vec![result.freeze()],
+        vec![],
+    );
+    Ok(PrimitiveArray::<T>::from(Arc::new(data)))
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn simd_divide<T>(
+    left: &PrimitiveArray<T>,
+    right: &PrimitiveArray<T>,
+) -> Result<PrimitiveArray<T>>
+    where
+        T: datatypes::ArrowNumericType,
+        T::Native: One + Zero,
+        T::Simd: Add<Output = T::Simd>
+        + Sub<Output = T::Simd>
+        + Mul<Output = T::Simd>
+        + Div<Output = T::Simd>,
+{
+    if left.len() != right.len() {
+        return Err(ArrowError::ComputeError(
+            "Cannot perform math operation on arrays of different length".to_string(),
+        ));
+    }
+
+    let null_bit_buffer = apply_bin_op_to_option_bitmap(
+        left.data().null_bitmap(),
+        right.data().null_bitmap(),
+        |a, b| a & b,
+    )?;
+
+    let lanes = T::lanes();
+    let buffer_size = left.len() * mem::size_of::<T::Native>();
+    let mut result = MutableBuffer::new(buffer_size).with_bitset(buffer_size, false);
+
+    for i in (0..left.len()).step_by(lanes) {
+        let simd_right_raw_check = T::load(right.value_slice(i, lanes));
+        let simd_right_check = unsafe{T::mask_select(is_valid::<T>(&None, i, lanes, right.len()), simd_right_raw_check, T::init(T::Native::one()))};
+        let is_zero = T::eq(T::init(T::Native::zero()), simd_right_check);
+        if T::mask_any(is_zero) {
+            return Err(ArrowError::DivideByZero);
+        }
+        let simd_right_raw = T::load(right.value_slice(i, lanes));
+        let simd_right = unsafe{T::mask_select(is_valid::<T>(&None, i, lanes, right.len()), simd_right_raw, T::init(T::Native::one()))};
+        let simd_left = T::load(left.value_slice(i, lanes));
+        let simd_result = T::bin_op(simd_left, simd_right, |a, b| a / b);
 
         let result_slice: &mut [T::Native] = unsafe {
             from_raw_parts_mut(
@@ -199,8 +261,13 @@ where
         + Sub<Output = T::Native>
         + Mul<Output = T::Native>
         + Div<Output = T::Native>
-        + Zero,
+        + Zero
+        + One,
 {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    return simd_divide(&left, &right);
+
+    #[allow(unreachable_code)]
     math_op(left, right, |a, b| {
         if b.is_zero() {
             Err(ArrowError::DivideByZero)

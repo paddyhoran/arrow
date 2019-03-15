@@ -20,6 +20,7 @@
 use crate::bitmap::Bitmap;
 use crate::buffer::Buffer;
 use crate::error::Result;
+use crate::datatypes::*;
 
 /// Applies a given binary operation, `op`, to two references to `Option<Bitmap>`'s.
 ///
@@ -42,6 +43,40 @@ where
             Some(ref r) => Ok(Some(op(&l.bits, &r.bits)?)),
         },
     }
+}
+
+
+pub unsafe fn is_valid<T>(bitmap: &Option<Bitmap>, i: usize, lanes: usize, len: usize) -> T::SimdMask
+where
+    T: ArrowNumericType,
+{
+
+    // Validity based on the length of the Array
+    let upper_bound = i + lanes;
+    let mut length_based_validity  = T::new_mask(true);
+    for j in upper_bound..len {
+        length_based_validity = T::mask_set(length_based_validity, j - i, false);
+    }
+
+    match &bitmap {
+        Some(_) => length_based_validity,
+        None => length_based_validity,
+    }
+
+//    let length_based_validity = if upper_bound < len {
+//        T::SimdMask::splat(true)
+//    } else {
+//        let
+//        u8x64::splat(255)
+//    };
+//
+//    match &buffer {
+//        Some(ref buf) => {
+//            let data = from_raw_parts(buffer.raw_data().offset(i as isize), lanes);
+//            u8x64::from_slice_unaligned_unchecked(data)
+//        }
+//        None => length_based_validity
+//    }
 }
 
 #[cfg(test)]
